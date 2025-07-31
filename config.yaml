@@ -1,0 +1,11 @@
+learning_rate: 0.0005
+gamma: 0.99
+epsilon_start: 1.0
+epsilon_end: 0.1
+epsilon_decay: 10000
+buffer_capacity: 10000
+batch_size: 64
+target_update_freq: 1000
+episodes: 500
+image_height: 84
+image_width: 84
