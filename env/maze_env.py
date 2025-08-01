@@ -1,33 +1,59 @@
+import time
+from vision.camera_input import Camera
+from control.motor_driver import MotorController
+from utils import preprocess_frame
 import cv2
 import numpy as np
-from control.motor_driver import MotorController
-from vision.camera_input import Camera
 
 class MazeEnv:
     def __init__(self):
-        self.motor = MotorController()
         self.camera = Camera()
-        self.done = False
+        self.motor = MotorController()
+        self.last_frame = None
 
     def reset(self):
-        self.done = False
-        # Optional: reset position manually
+        input("Place the robot at the starting line. Press Enter to continue...")
         frame = self.camera.get_frame()
-        state = self._process_frame(frame)
-        return state
+        self.last_frame = frame
+        processed = preprocess_frame(frame)
+        return processed
 
     def step(self, action):
         self.motor.execute_action(action)
+        time.sleep(0.2)  # Give time to move
+
         frame = self.camera.get_frame()
-        state = self._process_frame(frame)
-        reward, done = self._compute_reward(frame)
-        return state, reward, done, {}
+        self.last_frame = frame
+        processed = preprocess_frame(frame)
 
-    def _process_frame(self, frame):
+        reward, done = self.compute_reward(frame)
+        return processed, reward, done, {}
+
+    def compute_reward(self, frame):
+        if self.detect_red_finish(frame):
+            return 100.0, True
+        elif self.detect_black(frame):
+            return -50.0, True
+        elif self.detect_green_checkpoint(frame):
+            return 10.0, False
+        else:
+            return -0.1, False
+
+    def detect_black(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        resized = cv2.resize(gray, (84, 84))
-        return resized / 255.0
+        black_pixels = np.sum(gray < 30)
+        return black_pixels > 5000  # tune this
 
-    def _compute_reward(self, frame):
-        # TEMP: placeholder reward
-        return 0.0, False
+    def detect_red_finish(self, frame):
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        lower_red = np.array([0, 100, 100])
+        upper_red = np.array([10, 255, 255])
+        mask = cv2.inRange(hsv, lower_red, upper_red)
+        return np.sum(mask) > 3000
+
+    def detect_green_checkpoint(self, frame):
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        lower_green = np.array([50, 100, 100])
+        upper_green = np.array([70, 255, 255])
+        mask = cv2.inRange(hsv, lower_green, upper_green)
+        return np.sum(mask) > 3000

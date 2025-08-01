@@ -2,7 +2,7 @@ from env.maze_env import MazeEnv
 from agent.dqn import Double_Agent
 
 env = MazeEnv()
-agent = Double_Agent(action_size=3)
+agent = Double_Agent(obs_dim=(1, 84, 84), act_dim=3)
 
 num_episodes = 500
 
@@ -11,7 +11,7 @@ for episode in range(num_episodes):
     total_reward = 0
 
     for t in range(200):  # Max steps per episode
-        action = agent.select_action(state)
+        action = agent.act(state)
         next_state, reward, done, _ = env.step(action)
         agent.store(state, action, reward, next_state, done)
         agent.learn()
