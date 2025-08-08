@@ -12,11 +12,20 @@ class ReplayBuffer:
     def sample(self, batch_size):
         batch = random.sample(self.buffer, batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
+    
+        states = np.stack(states)
+        next_states = np.stack(next_states)
+
+    # Remove extra singleton dimension if it exists, e.g., shape [64,1,3,84,84] -> [64,3,84,84]
+        if states.ndim == 5 and states.shape[1] == 1:
+            states = states.squeeze(1)
+            next_states = next_states.squeeze(1)
+
         return (
-            np.stack(states),
+            states,
             np.array(actions),
             np.array(rewards),
-            np.stack(next_states),
+            next_states,
             np.array(dones)
         )
 

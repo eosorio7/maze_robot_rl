@@ -15,7 +15,9 @@ class ConvDQN(nn.Module):
             nn.Conv2d(64, 64, kernel_size=3, stride=1),              # → 64 x 4 x 4
             nn.ReLU()
         )
+        print(f"[Agent] Creating dummy input for conv with shape: {input_shape}")
         self.fc_input_dim = self._get_conv_output(input_shape)
+        print(f"[Agent] Got fc_input_dim: {self.fc_input_dim}")
         self.fc = nn.Sequential(
             nn.Linear(self.fc_input_dim, 512),
             nn.ReLU(),
@@ -23,8 +25,17 @@ class ConvDQN(nn.Module):
         )
 
     def _get_conv_output(self, shape):
-        o = self.conv(torch.zeros(1, *shape))
-        return int(np.prod(o.size()))
+        print(f"[Agent] Entering _get_conv_output with shape: {shape}")
+        try:
+            with torch.no_grad():
+                dummy_input = torch.zeros(1, *shape, dtype=torch.float32)
+                print(f"[Agent] Dummy input shape: {dummy_input.shape}")
+                o = self.conv(dummy_input)
+                print(f"[Agent] Output shape after conv: {o.shape}")
+                return int(np.prod(o.size()))
+        except Exception as e:
+            print(f"[Agent] CRASHED during conv output shape calc: {e}")
+            raise
 
     def forward(self, x):
         x = x / 255.0  # normalize image
@@ -107,6 +118,11 @@ class Agent:
         next_states = torch.tensor(np.array(next_states), dtype=torch.float32)
         dones = torch.tensor(dones, dtype=torch.bool)
 
+        # FIX: Squeeze extra dimension if it exists
+        if states.dim() == 5 and states.size(1) == 1:
+            states = states.squeeze(1)
+            next_states = next_states.squeeze(1)
+
         q_values = self.online_net(states).gather(1, actions.unsqueeze(1)).squeeze()
         with torch.no_grad():
             next_q_values = self.target_net(next_states).max(1)[0]
@@ -140,15 +156,26 @@ class Double_Agent:
     def act(self, state, epsilon=0.1):
         if random.random() < epsilon:
             return random.randint(0, self.act_dim - 1)
-        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+        state = torch.tensor(state, dtype=torch.float32)
+        if state.dim() == 3:  # (C, H, W) → add batch dimension
+            state = state.unsqueeze(0)
         with torch.no_grad():
             q_values = self.online_net(state)
         return int(torch.argmax(q_values))
 
-    def store(self, experience):
-        self.memory.append(experience)
+    def store(self, state, action, reward, next_state, done):
+        # Remove extra batch dim if present
+        if isinstance(state, np.ndarray) and state.ndim == 4 and state.shape[0] == 1:
+            state = np.squeeze(state, axis=0)
+        if isinstance(next_state, np.ndarray) and next_state.ndim == 4 and next_state.shape[0] == 1:
+            next_state = np.squeeze(next_state, axis=0)
+
+        self.memory.append((state, action, reward, next_state, done))
         if len(self.memory) > 10000:
             self.memory.pop(0)
+
+    def learn(self):
+        return self.train_step()
 
     def train_step(self):
         if len(self.memory) < self.batch_size:
@@ -163,13 +190,15 @@ class Double_Agent:
         next_states = torch.tensor(np.array(next_states), dtype=torch.float32)
         dones = torch.tensor(dones, dtype=torch.bool)
 
+        # FIX: Squeeze extra dimension if it exists
+        if states.dim() == 5 and states.size(1) == 1:
+            states = states.squeeze(1)
+            next_states = next_states.squeeze(1)
+
         q_values = self.online_net(states).gather(1, actions.unsqueeze(1)).squeeze()
         with torch.no_grad():
-            next_q_online = self.online_net(next_states)
-            best_actions = next_q_online.argmax(dim=1, keepdim=True)
-            next_q_target = self.target_net(next_states)
-            selected_q_values = next_q_target.gather(1, best_actions).squeeze(1)
-            target_q = rewards + self.gamma * selected_q_values * (~dones)
+            next_q_values = self.target_net(next_states).max(1)[0]
+            target_q = rewards + self.gamma * next_q_values * (~dones)
 
         loss = F.mse_loss(q_values, target_q)
         self.optimizer.zero_grad()
