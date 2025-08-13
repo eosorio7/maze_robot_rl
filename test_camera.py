@@ -13,6 +13,7 @@ time.sleep(2)  # Wait for camera to stabilize
 try:
     frame = picam2.capture_array()
     print("Captured frame successfully.")
-    cv2.imwrite("test.jpg", frame)
+    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    cv2.imwrite("test.jpg", frame_bgr)
 except Exception as e:
     print(f"Failed to capture frame: {e}")

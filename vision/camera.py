@@ -9,7 +9,9 @@ class Camera:
         self.picam2 = Picamera2()
         print("[Camera] Created Picamera2 instance")
 
-        config = self.picam2.create_preview_configuration(main={"size": (640, 480)})
+        config = self.picam2.create_preview_configuration(
+            main={"format": "BGR888", "size": (640, 480)}
+        )
         print("[Camera] Created preview config")
 
         self.picam2.configure(config)
@@ -23,13 +25,11 @@ class Camera:
         print("[Camera] Warm-up complete.")
 
     def get_frame(self):
-        print("[Camera] Capturing image...")
-
         try:
             frame = self.picam2.capture_array()
-            print(f"[Camera] Frame captured: shape = {frame.shape}")
+            # Convert RGB → BGR so OpenCV works as expected
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             return frame
-
         except Exception as e:
             print(f"[Camera] ERROR during capture: {e}")
             return None

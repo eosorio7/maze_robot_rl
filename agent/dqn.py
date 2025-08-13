@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import random
 import numpy as np
+import math
 
 class ConvDQN(nn.Module):
     def __init__(self, input_shape, act_dim): #Channel height and width for input
@@ -134,7 +135,8 @@ class Agent:
         self.optimizer.step()
 
 class Double_Agent:
-    def __init__(self, obs_dim, act_dim, dueling = False):
+    def __init__(self, obs_dim, act_dim, dueling=False,
+                 eps_start=1.0, eps_end=0.05, eps_decay_episodes=20):
         if dueling :
             self.online_net = DuelingDQN(obs_dim, act_dim)
             self.target_net = DuelingDQN(obs_dim, act_dim)
@@ -149,11 +151,19 @@ class Double_Agent:
         self.act_dim = act_dim
         self.update_target()
 
+        # Epsilon-greedy settings
+        self.eps_start = eps_start
+        self.eps_end = eps_end
+        self.eps_decay_episodes = eps_decay_episodes
+        self.current_episode = 0  # Will be updated externally
+
     def update_target(self):
         self.target_net.load_state_dict(self.online_net.state_dict())
 
 
-    def act(self, state, epsilon=0.1):
+    def act(self, state):
+        # Compute decayed epsilon based on current episode
+        epsilon = self.eps_end + (self.eps_start - self.eps_end) * math.exp(-self.current_episode / (self.eps_decay_episodes ))
         if random.random() < epsilon:
             return random.randint(0, self.act_dim - 1)
         state = torch.tensor(state, dtype=torch.float32)
@@ -164,11 +174,24 @@ class Double_Agent:
         return int(torch.argmax(q_values))
 
     def store(self, state, action, reward, next_state, done):
-        # Remove extra batch dim if present
+        
+
+        # Convert torch tensors -> numpy float32 arrays
+        if isinstance(state, torch.Tensor):
+            state = state.detach().cpu().numpy().astype(np.float32)
+        if isinstance(next_state, torch.Tensor):
+            next_state = next_state.detach().cpu().numpy().astype(np.float32)
+
+        # If still numpy and have extra batch dim (1, C, H, W), squeeze it
         if isinstance(state, np.ndarray) and state.ndim == 4 and state.shape[0] == 1:
             state = np.squeeze(state, axis=0)
         if isinstance(next_state, np.ndarray) and next_state.ndim == 4 and next_state.shape[0] == 1:
             next_state = np.squeeze(next_state, axis=0)
+
+        # Ensure action/reward/done are plain scalars
+        action = int(action)
+        reward = float(reward)
+        done = bool(done)
 
         self.memory.append((state, action, reward, next_state, done))
         if len(self.memory) > 10000:

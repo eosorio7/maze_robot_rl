@@ -11,7 +11,6 @@ def epsilon_greedy_action(q_values, epsilon, act_dim):
         return q_values.argmax().item()
 
 def preprocess_frame(frame):
-    print("About to process frame")
 
     # Remove alpha channel if it exists (RGBA -> RGB)
     if frame.shape[2] == 4:
@@ -29,5 +28,4 @@ def preprocess_frame(frame):
     # Return as torch tensor WITHOUT batch dimension
     frame = torch.from_numpy(frame)
 
-    print("About to return the frame")
     return frame
