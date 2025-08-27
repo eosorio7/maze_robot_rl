@@ -17,6 +17,23 @@ This repository contains code for a maze robot powered by a camera, motor driver
 
 ---
 
+Things learned
+
+Reward design is critical.
+Rewards were too much for each checkpoint in relation to the black penalty for going out of bounds. The robot learned to drive straight through checkpoints and settle for small positive rewards.
+
+Ambiguous signals produce degenerate behaviors.
+The agent learned to oscillate between two checkpoints when the environment didn’t signal a clear next target. Adding a third checkpoint color (RED → YELLOW → GREEN) removed that attractor and allowed for progression.
+
+Sensing quality limits performance.
+Camera noise, lighting changes, and color-threshold settings created false positives and false negatives that the agent exploited. Improving color masks and using conservative pixel-count thresholds reduced detection errors.
+
+Future work / changes I would make
+
+Train the course in sections (curriculum learning) rather than the full track from scratch.
+
+Add a second camera or a wider field-of-view to improve color detection and vision of the course. Camera was very low to the ground and I believe that hindered its learning.
+
 ## Quick start
 
 1. Ensure you are on a Raspberry Pi with camera support and GPIO access.
@@ -151,4 +168,6 @@ python play.py
 
 ---
 
+## ✍️ Author
 
+Developed by Eduardo Osorio - University of Michigan Engineering Student
