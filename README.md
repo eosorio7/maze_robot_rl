@@ -108,7 +108,7 @@ python play.py
 
 ## Recording & analysis
 
-<p align="center">
+
   <span style="display:inline-block;margin:8px;text-align:center;">
     <a href="https://www.youtube.com/watch?v=JHTGzpdtKpA" target="_blank" rel="noopener">
       <img src="https://img.youtube.com/vi/JHTGzpdtKpA/0.jpg" alt="First trial — Episode 10" width="240" style="display:block;">
