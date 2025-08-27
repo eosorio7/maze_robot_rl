@@ -136,7 +136,7 @@ class Agent:
 
 class Double_Agent:
     def __init__(self, obs_dim, act_dim, dueling=False,
-                 eps_start=1.0, eps_end=0.05, eps_decay_episodes=20):
+                 eps_start=0.5, eps_end=0.05, eps_decay_episodes=400):
         if dueling :
             self.online_net = DuelingDQN(obs_dim, act_dim)
             self.target_net = DuelingDQN(obs_dim, act_dim)

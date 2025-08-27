@@ -39,6 +39,9 @@ try:
         state = env.reset()
         total_reward = 0
 
+        checkpoint_hit = False
+        episode_step = 0
+
         # Pick first action immediately
         current_action = agent.act(state)
         last_action_time = time.time()
@@ -46,15 +49,24 @@ try:
         for t in range(126):
             now = time.time()
             if now - last_action_time >= action_interval:
-                current_action = agent.act(state)
+                if episode_step < 6 and not checkpoint_hit:
+                    # EXPLOIT: Very low epsilon for first 6 steps
+                    original_episode = agent.current_episode
+                    agent.current_episode = 10000  # Force very low epsilon
+                    current_action = agent.act(state)
+                    agent.current_episode = original_episode  # Restore
+                    if episode_step == 0:
+                        print("🎯 EXPLOIT mode: Using learned strategy")
+                else:
+                        # EXPLORE: Normal epsilon decay
+                    current_action = agent.act(state)
+                    if episode_step == 6 and not checkpoint_hit:
+                        print("🔍 EXPLORE mode: Normal exploration")
+                
                 last_action_time = now
+                episode_step += 1
 
             next_state, reward, done, info = env.step(current_action)
-            agent.store(state, current_action, reward, next_state, done)
-            agent.learn()
-
-            state = next_state
-            total_reward += reward
 
             # 🔹 Occasionally print rewards during episode
             if t % 3 == 0:  # every 10 steps

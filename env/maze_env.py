@@ -21,6 +21,7 @@ class MazeEnv:
         self.last_checkpoint = None
         self.consecutive_turns = 0
         self.last_action = None
+        self.consecutive_forwards = 0  # Track consecutive forward actions
         self._latest_reward = 0.0  # updated by camera thread
 
         self._motors_stopped = False
@@ -38,7 +39,7 @@ class MazeEnv:
         print("[MazeEnv] Camera thread started.")
 
     def _camera_loop(self):
-        """Continuously grab frames and check for black, red, and green.
+        """Continuously grab frames and check for black, red, green, and yellow.
         Updates stop_flag and checkpoint rewards in real-time.
         """
         while self._running:
@@ -51,6 +52,7 @@ class MazeEnv:
                     black_count = self._detect_black_count(frame)
                     red_count = self._detect_red_count(frame)
                     green_count = self._detect_green_count(frame)
+                    yellow_count = self._detect_yellow_count(frame)  # Add this line
 
                     # BLACK → stop motors, terminal
                     if black_count > 60:
@@ -65,17 +67,22 @@ class MazeEnv:
                             self._motors_stopped = True
                         self.stop_flag = True
 
-                    # RED → mark checkpoint reward
-                    if red_count > 150 and self.last_checkpoint != "red":
+                    # STRICT SEQUENTIAL LOGIC: RED → YELLOW → GREEN → RED → YELLOW → GREEN...
+                    # RED → only allowed from None (start) or GREEN (completing cycle)
+                    elif red_count > 150 and self.last_checkpoint in [None, "green"]:
                         self.last_checkpoint = "red"
                         print("[MazeEnv] RED checkpoint detected! +10 reward")
-                        self._latest_reward = 10.0
+                        self._latest_reward += 10.0  # ← ACCUMULATES
 
-                    # GREEN → mark checkpoint reward
-                    if green_count > 150 and self.last_checkpoint != "green":
+                    elif yellow_count > 150 and self.last_checkpoint == "red":
+                        self.last_checkpoint = "yellow"
+                        print("[MazeEnv] YELLOW checkpoint detected! +5 reward")
+                        self._latest_reward += 10.0   # ← ACCUMULATES
+
+                    elif green_count > 150 and self.last_checkpoint == "yellow":
                         self.last_checkpoint = "green"
                         print("[MazeEnv] GREEN checkpoint detected! +10 reward")
-                        self._latest_reward = 10.0
+                        self._latest_reward += 10.0  # ← ACCUMULATES
 
                 time.sleep(0.005)
             except Exception as e:
@@ -91,7 +98,8 @@ class MazeEnv:
         self.last_action = None
         self.stop_flag = False
         self._motors_stopped = False
-
+        self._latest_reward = 0.0
+        self.consecutive_forwards = 0
         # Wait until we have a valid frame (avoid busy-wait)
         waited = 0.0
         while True:
@@ -105,35 +113,54 @@ class MazeEnv:
                 raise RuntimeError("Timeout waiting for camera frame in reset()")
 
     def step(self, action):
-        # execute the action
-        self.motor.execute_action(action)
-
+        # DON'T execute action if motors are stopped
+        if not self._motors_stopped:
+            self.motor.execute_action(action)
+        
         # snapshot last frame safely
         with self._frame_lock:
             frame_copy = self.last_frame.copy() if self.last_frame is not None else None
-
+        
         processed = preprocess_frame(frame_copy) if frame_copy is not None else None
-
+        
+        if action == 0:  # 0 = forward
+            self.consecutive_forwards += 1
+        else:
+            self.consecutive_forwards = 0
         # initialize reward and done
         done = False
         reward = 0.0
         info = {}
-
+        
         # check camera-thread terminal (black)
         if self.stop_flag:
             done = True
-            reward = -20.0
-            info["reason"] = "black"
+            if self.last_action == 0 and self.consecutive_forwards >= 8:  # 8+ straight moves
+                base_penalty = -45.0
+                progressive_penalty = -(self.consecutive_forwards - 7) * 2.0  # -2 per extra forward
+                reward = base_penalty + progressive_penalty
+                info["reason"] = f"black_after_{self.consecutive_forwards}_forwards"
+                print(f"🚫 PROGRESSIVE PENALTY: {self.consecutive_forwards} consecutive forwards = {reward} penalty!")
+            elif self.last_action == 0:  # Fewer forwards but still straight
+                reward = -45.0
+                info["reason"] = "black_after_forward"
+                print(f"🚫 STANDARD PENALTY: Hit black after {self.consecutive_forwards} forward moves = {reward}")
+            else:
+                reward = -40.0  # Less penalty if turning into black
+                info["reason"] = "black"
+                print("🚫 MINOR PENALTY: Hit black while turning")
+
+
             self.stop_flag = False
-            if not self._motors_stopped:
-                self.motor.stop()
-                self._motors_stopped = True
+            self.motor.stop()  # Safe to call multiple times
+            self._motors_stopped = True
+            self.consecutive_forwards = 0
         else:
             # reward from camera thread checkpoint detection
             reward = getattr(self, "_latest_reward", 0.0)
             self._latest_reward = 0.0
             info["reason"] = self.last_checkpoint if reward > 0 else "none"
-
+        
         # spin penalty
         if self.last_action == action and action in [1, 2]:
             self.consecutive_turns += 1
@@ -142,67 +169,22 @@ class MazeEnv:
         self.last_action = action
         if self.consecutive_turns > 3:
             reward -= 1
-
+        
         # --- this part ensures motors stop and checkpoint resets when done ---
         if done:
             if not self._motors_stopped:
                 self.motor.stop()
                 self._motors_stopped = True
             self.last_checkpoint = None
-
+        
         return processed, float(reward), done, info
 
     # -------------------------
     # Reward / detection helpers
     # -------------------------
-    def compute_reward(self, frame):
-        """Compute reward and done. Also return debug info dict with pixel counts.
-           Returns: (reward:float, done:bool, debug:dict)
-        """
-        debug = {"black_pixels": None, "red_pixels": None, "green_pixels": None}
-        step_penalty = 0.0
+    
 
-        # safe counts (0 if frame None)
-        black_count = self._detect_black_count(frame)
-        red_count = self._detect_red_count(frame)
-        green_count = self._detect_green_count(frame)
-        debug["black_pixels"] = black_count
-        debug["red_pixels"] = red_count
-        debug["green_pixels"] = green_count
-
-        # Verbose log every time reward is evaluated (or only when verbose)
-        if self.verbose:
-            print(f"[compute_reward] black:{black_count} red:{red_count} green:{green_count} last_cp:{self.last_checkpoint}")
-
-        # priorities: black terminal -> red -> green
-        if black_count > 60:
-            if self.verbose:
-                print("[compute_reward] BLACK -> terminal")
-            return -20.0 + step_penalty, True, {"reason": "black", **debug}
-        # check red
-        if red_count > 150:
-            if self.last_checkpoint != "red":
-                self.last_checkpoint = "red"
-                if self.verbose:
-                    print("[compute_reward] NEW red checkpoint -> +10")
-                return 10.0 + step_penalty, False, {"reason": "red", **debug}
-            else:
-                if self.verbose:
-                    print("[compute_reward] red seen but not new -> +0")
-                return step_penalty, False, {"reason": "red_seen_not_new", **debug}
-        # check green
-        if green_count > 150:
-            if self.last_checkpoint != "green":
-                self.last_checkpoint = "green"
-                if self.verbose:
-                    print("[compute_reward] NEW green checkpoint -> +10")
-                return 10.0 + step_penalty, False, {"reason": "green", **debug}
-            else:
-                if self.verbose:
-                    print("[compute_reward] green seen but not new -> +0")
-                return step_penalty, False, {"reason": "green_seen_not_new", **debug}
-
-        return step_penalty, False, {"reason": "none", **debug}
+    
 
     # low-level detection routines return raw pixel counts (safe for None frames)
     def get_bottom_third(self, frame):
@@ -221,7 +203,7 @@ class MazeEnv:
         except Exception:
             return 0
         lower_black = np.array([0, 0, 0])
-        upper_black = np.array([180, 32, 50])
+        upper_black = np.array([180, 50, 50])
         mask = cv2.inRange(hsv, lower_black, upper_black)
         return int(cv2.countNonZero(mask))
 
@@ -250,9 +232,24 @@ class MazeEnv:
             hsv = cv2.cvtColor(bottom, cv2.COLOR_BGR2HSV)
         except Exception:
             return 0
-        lower_green = np.array([32, 67, 67])
-        upper_green = np.array([87, 255, 255])
+        lower_green = np.array([45, 60, 60])     # Lower sat/val, start after yellow ends
+        upper_green = np.array([85, 255, 255])  # Still green but more selective
         mask = cv2.inRange(hsv, lower_green, upper_green)
+        return int(cv2.countNonZero(mask))
+    
+    def _detect_yellow_count(self, frame):
+        bottom = self.get_bottom_third(frame)
+        if bottom is None:
+            return 0
+        try:
+            hsv = cv2.cvtColor(bottom, cv2.COLOR_BGR2HSV)
+        except Exception:
+            return 0
+        
+        # Yellow HSV range
+        lower_yellow = np.array([15, 80, 80])    # Lower sat/val thresholds, wider hue
+        upper_yellow = np.array([34, 255, 255])
+        mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
         return int(cv2.countNonZero(mask))
 
     # backward-compatible names (if other code calls these)
