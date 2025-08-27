@@ -110,15 +110,6 @@ python play.py
 
 
   <span style="display:inline-block;margin:8px;text-align:center;">
-    <a href="https://www.youtube.com/watch?v=JHTGzpdtKpA" target="_blank" rel="noopener">
-      <img src="https://img.youtube.com/vi/JHTGzpdtKpA/0.jpg" alt="First trial — Episode 10" width="240" style="display:block;">
-    </a>
-    <a href="https://www.youtube.com/watch?v=JHTGzpdtKpA" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;font-size:14px;">
-      <div>First trial — Episode 10</div>
-    </a>
-  </span>
-
-  <span style="display:inline-block;margin:8px;text-align:center;">
     <a href="https://www.youtube.com/watch?v=IBdh6dh6xiI" target="_blank" rel="noopener">
       <img src="https://img.youtube.com/vi/IBdh6dh6xiI/0.jpg" alt="Episode 300" width="240" style="display:block;">
     </a>
@@ -142,6 +133,15 @@ python play.py
     </a>
     <a href="https://www.youtube.com/watch?v=6Ak2ZThoBK4" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;font-size:14px;">
       <div>Episode 600</div>
+    </a>
+  </span>
+
+  <span style="display:inline-block;margin:8px;text-align:center;">
+    <a href="https://www.youtube.com/watch?v=JHTGzpdtKpA" target="_blank" rel="noopener">
+      <img src="https://img.youtube.com/vi/JHTGzpdtKpA/0.jpg" alt="First trial — Episode 10" width="240" style="display:block;">
+    </a>
+    <a href="https://www.youtube.com/watch?v=JHTGzpdtKpA" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;font-size:14px;">
+      <div>First trial — Episode 10</div>
     </a>
   </span>
 </p>
